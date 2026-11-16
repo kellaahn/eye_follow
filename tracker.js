@@ -21,6 +21,7 @@ const tracker = {
   y: 0.5,
   iod: 0.1, // 두 눈 사이 거리 (정규화) → 얼마나 가까이 있는지
   blink: 0, // 눈 감김 정도 0(뜸) ~ 1(감음), 두 눈 중 더 감긴 쪽
+  landmarks: null, // 최근 프레임의 얼굴 랜드마크 (미리보기 표시용)
   video: null,
 };
 window.faceTracker = tracker;
@@ -62,6 +63,7 @@ async function start() {
           tracker.y = (a.y + b.y) / 2;
           tracker.iod = Math.hypot(a.x - b.x, a.y - b.y);
           tracker.found = true;
+          tracker.landmarks = lm;
 
           const shapes = res.faceBlendshapes && res.faceBlendshapes[0];
           if (shapes) {

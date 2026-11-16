@@ -199,6 +199,91 @@ function draw() {
   }
 
   if (showDebug) drawDebug();
+  drawCamPreview();
+}
+
+// ===== 오른쪽 위 카메라 미리보기 =====
+// 눈 윤곽 랜드마크 (MediaPipe Face Mesh 인덱스)
+const EYE_CONTOURS = [
+  [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+  [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+];
+const IRIS_RINGS = [
+  [469, 470, 471, 472],
+  [474, 475, 476, 477],
+];
+
+function drawCamPreview() {
+  const box = document.getElementById('cam-preview');
+  if (!box || box.classList.contains('hidden')) return;
+  const cv = document.getElementById('cam-canvas');
+  const cap = document.getElementById('cam-caption');
+  const c = cv.getContext('2d');
+  const t = window.faceTracker;
+  const w = cv.width;
+  const h = cv.height;
+
+  c.fillStyle = '#111';
+  c.fillRect(0, 0, w, h);
+
+  if (!t || t.status === 'loading') {
+    cap.textContent = '카메라 준비 중…';
+    return;
+  }
+  if (t.status === 'error') {
+    cap.textContent = '카메라 오류: ' + t.error;
+    return;
+  }
+
+  // 거울처럼 좌우 반전
+  if (t.video && t.video.readyState >= 2) {
+    c.save();
+    c.translate(w, 0);
+    c.scale(-1, 1);
+    c.drawImage(t.video, 0, 0, w, h);
+    c.restore();
+  }
+
+  if (!t.found) {
+    cap.textContent = '얼굴을 찾는 중…';
+    return;
+  }
+
+  const lm = t.landmarks;
+  const px = (p) => (1 - p.x) * w;
+  const py = (p) => p.y * h;
+
+  if (lm) {
+    // 눈 윤곽
+    c.strokeStyle = 'rgba(0, 169, 220, 0.9)';
+    c.lineWidth = 2;
+    for (const ring of EYE_CONTOURS) {
+      c.beginPath();
+      ring.forEach((i, k) => (k ? c.lineTo(px(lm[i]), py(lm[i])) : c.moveTo(px(lm[i]), py(lm[i]))));
+      c.closePath();
+      c.stroke();
+    }
+    // 홍채
+    c.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    for (const ring of IRIS_RINGS) {
+      const ctr = lm[ring[0] - 1];
+      const r = Math.hypot(px(lm[ring[0]]) - px(ctr), py(lm[ring[0]]) - py(ctr));
+      c.beginPath();
+      c.arc(px(ctr), py(ctr), r, 0, Math.PI * 2);
+      c.stroke();
+    }
+  }
+
+  // 추적 기준점 (두 눈 가운데)
+  c.fillStyle = C_RED;
+  c.beginPath();
+  c.arc((1 - t.x) * w, t.y * h, 8, 0, Math.PI * 2);
+  c.fill();
+
+  const openPct = Math.round((1 - t.blink) * 100);
+  const thresholdPct = Math.round((1 - (BLINK_LOW + BLINK_HIGH) / 2) * 100);
+  const state = lidClose > 0.5 ? '감음' : '뜸';
+  cap.textContent = `뜬 정도 ${openPct}% (기준 ${thresholdPct}% 아래면 감음) · ${state}`;
 }
 
 // ===== 깜빡임 =====
@@ -465,24 +550,13 @@ function buildPanel() {
 // D 키: 웹캠 미리보기 + 추적 상태 표시
 function keyPressed() {
   if (key === 'd' || key === 'D') showDebug = !showDebug;
+  if (key === 'v' || key === 'V') document.getElementById('cam-preview').classList.toggle('hidden');
   if (key === 'b' || key === 'B') manualBlinkUntil = millis() + 150;
 }
 
 function drawDebug() {
   const t = window.faceTracker;
   push();
-  if (t && t.video && t.video.readyState >= 2) {
-    // 미러링해서 표시
-    push();
-    translate(20 + 320, 20);
-    scale(-1, 1);
-    drawingContext.drawImage(t.video, 0, 0, 320, 240);
-    pop();
-    if (t.found) {
-      fill(0, 255, 0);
-      circle(20 + (1 - t.x) * 320, 20 + t.y * 240, 8);
-    }
-  }
   fill(0, 255, 0);
   circle(target.x, target.y, 14);
   fill(0, 160, 0);
